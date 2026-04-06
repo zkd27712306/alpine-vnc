@@ -8,7 +8,8 @@ RUN apk add --no-cache \
     novnc \
     websockify \
     bash \
-    xterm \
+    curl \
+    dbus \
     ttf-freefont
 
 ENV DISPLAY=:0
