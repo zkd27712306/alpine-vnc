@@ -4,7 +4,7 @@ RUN apk add --no-cache \
     xvfb \
     x11vnc \
     fluxbox \
-    firefox \
+    chromium \
     novnc \
     websockify \
     bash \
