@@ -1,34 +1,38 @@
 FROM alpine:latest
 
-# 安装必要软件
 RUN apk add --no-cache \
     xvfb \
     x11vnc \
     fluxbox \
-    chromium \
     novnc \
-    websockify \
     bash \
-    curl \
-    ttf-freefont \
-    ttf-dejavu \
-    ttf-liberation \
-    netcat-openbsd
+    chromium
 
-# 创建必要目录
-RUN mkdir -p /var/run/dbus /run/dbus /tmp/.X11-unix
+RUN echo '#!/bin/bash' > /start.sh && \
+    echo '' >> /start.sh && \
+    echo '# 清理' >> /start.sh && \
+    echo 'rm -f /tmp/.X0-lock' >> /start.sh && \
+    echo '' >> /start.sh && \
+    echo '# Xvfb' >> /start.sh && \
+    echo 'Xvfb :0 -screen 0 1024x768x16 &' >> /start.sh && \
+    echo 'sleep 2' >> /start.sh && \
+    echo '' >> /start.sh && \
+    echo '# Fluxbox' >> /start.sh && \
+    echo 'fluxbox &' >> /start.sh && \
+    echo 'sleep 1' >> /start.sh && \
+    echo '' >> /start.sh && \
+    echo '# x11vnc' >> /start.sh && \
+    echo 'x11vnc -display :0 -forever -nopw &' >> /start.sh && \
+    echo 'sleep 1' >> /start.sh && \
+    echo '' >> /start.sh && \
+    echo '# Chrome' >> /start.sh && \
+    echo 'DISPLAY=:0 chromium-browser --no-sandbox --incognito about:blank &' >> /start.sh && \
+    echo '' >> /start.sh && \
+    echo '# noVNC' >> /start.sh && \
+    echo 'websockify --web /usr/share/novnc 8080 localhost:5900' >> /start.sh
 
-# 设置环境变量
-ENV DISPLAY=:0
-ENV RESOLUTION=1280x720
-ENV PASSWORD=secret
-
-# 复制启动脚本
-COPY start.sh /start.sh
 RUN chmod +x /start.sh
 
-# 暴露端口
 EXPOSE 8080
 
-# 启动命令
-CMD ["/start.sh"]
+CMD ["/bin/bash", "/start.sh"]
