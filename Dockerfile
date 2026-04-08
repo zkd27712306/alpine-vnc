@@ -1,5 +1,6 @@
 FROM alpine:latest
 
+# 安装所有必要软件
 RUN apk update && apk add --no-cache \
     x11vnc \
     xvfb \
@@ -14,48 +15,77 @@ RUN apk update && apk add --no-cache \
     gtk+3.0 \
     dbus \
     dbus-x11 \
-    mesa-dri-gallium
+    mesa-dri-gallium \
+    nginx \
+    curl
 
-# 启动 dbus 服务
-RUN mkdir -p /run/dbus
+# 创建目录
+RUN mkdir -p /run/dbus /run/nginx /app
+
+# 创建 nginx 配置 - 关键：正确转发 WebSocket
+RUN cat > /etc/nginx/http.d/novnc.conf << 'EOF'
+server {
+    listen ${PORT:-8080};
+    
+    location / {
+        root /usr/share/novnc;
+        index vnc.html;
+        try_files $uri $uri/ =404;
+    }
+    
+    location /websockify {
+        proxy_pass http://127.0.0.1:6080/;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_read_timeout 86400;
+    }
+}
+EOF
+
+# 替换端口变量
+RUN sed -i 's/${PORT:-8080}/8080/g' /etc/nginx/http.d/novnc.conf
 
 # 创建启动脚本
 RUN cat > /app/start.sh << 'EOF'
 #!/bin/bash
 
-echo "=== 启动服务 ==="
+echo "=== Alpine VNC + Chrome 启动中 ==="
 
 # 清理残留
 rm -f /tmp/.X0-lock /tmp/.X11-unix/X0 2>/dev/null
 
 # 启动 dbus
-echo "启动 dbus..."
-dbus-daemon --system --fork
+dbus-daemon --system --fork 2>/dev/null
 
 # 启动 Xvfb
-echo "启动 Xvfb..."
-Xvfb :0 -screen 0 1280x800x24 -ac &
+echo "[1/6] 启动虚拟显示器 Xvfb..."
+Xvfb :0 -screen 0 1280x800x24 -ac +extension GLX +render &
 sleep 3
 
-# 设置 DISPLAY
 export DISPLAY=:0
 
 # 启动 fluxbox
-echo "启动 fluxbox..."
+echo "[2/6] 启动窗口管理器 Fluxbox..."
 fluxbox 2>/dev/null &
 sleep 2
 
 # 启动 x11vnc
-echo "启动 x11vnc..."
-x11vnc -display :0 -forever -nopw -listen 0.0.0.0 -rfbport 5900 2>/dev/null &
+echo "[3/6] 启动 VNC 服务..."
+x11vnc -display :0 -forever -nopw -listen 127.0.0.1 -rfbport 5900 2>/dev/null &
 sleep 2
 
-# 启动 Chromium 并自动打开 Google
-echo "启动 Chromium 无痕模式，打开 Google..."
+# 启动 Chrome
+echo "[4/6] 启动 Chrome 无痕模式..."
 DISPLAY=:0 chromium-browser \
     --no-sandbox \
     --disable-dev-shm-usage \
     --disable-gpu \
+    --disable-software-rasterizer \
     --window-size=1280,800 \
     --incognito \
     --no-first-run \
@@ -65,35 +95,30 @@ DISPLAY=:0 chromium-browser \
 
 sleep 3
 
-# 检查 Chrome 是否启动
-if pgrep -f chromium > /dev/null; then
-    echo "✅ Chromium 已成功启动"
-else
-    echo "⚠️ Chromium 启动失败，但 VNC 仍可手动启动浏览器"
-fi
+# 启动 websockify
+echo "[5/6] 启动 WebSocket 代理..."
+websockify --web /usr/share/novnc 127.0.0.1:6080 127.0.0.1:5900 2>/dev/null &
+sleep 2
 
+echo ""
 echo "=========================================="
-echo "✅ 服务已就绪"
+echo "✅ 所有服务已启动成功！"
+echo "=========================================="
 echo "📺 VNC 端口: 5900"
-echo "🌐 noVNC 端口: ${PORT:-8080}"
-echo "🔗 访问: https://你的域名.onrender.com"
-echo "🌍 Chrome 已打开: https://www.google.com"
+echo "🌐 HTTP 端口: ${PORT:-8080}"
+echo "🔗 访问地址: https://你的域名.onrender.com"
+echo "💡 提示: 直接访问即可，无需添加路径参数"
 echo "=========================================="
+echo ""
 
-# 启动 noVNC
-if [ -f /usr/bin/novnc_server ]; then
-    /usr/bin/novnc_server --vnc localhost:5900 --listen 0.0.0.0:${PORT:-8080}
-else
-    websockify --web /usr/share/novnc ${PORT:-8080} localhost:5900
-fi
-
-# 保持运行
-wait
+# 启动 nginx
+echo "[6/6] 启动 Nginx..."
+exec nginx -g "daemon off;"
 EOF
 
 RUN chmod +x /app/start.sh
 
-EXPOSE 8080 5900
+EXPOSE 8080
 
 ENV DISPLAY=:0 \
     PORT=8080
