@@ -1,6 +1,6 @@
 FROM alpine:latest
 
-# 安装所有必要软件
+# 安装所有必要软件（增加 Xvfb 依赖）
 RUN apk update && apk add --no-cache \
     xvfb \
     x11vnc \
@@ -13,6 +13,10 @@ RUN apk update && apk add --no-cache \
     dbus \
     dbus-x11 \
     ttf-dejavu \
+    mesa-dri-gallium \
+    mesa-gl \
+    libxcb \
+    libxshmfence \
     python3 \
     py3-pip \
     curl \
@@ -24,23 +28,20 @@ RUN mkdir -p /app && \
     curl -L -o novnc.zip https://github.com/novnc/noVNC/archive/refs/tags/v1.4.0.zip && \
     unzip -q novnc.zip && \
     mv noVNC-1.4.0 novnc && \
-    rm novnc.zip && \
-    curl -L -o websockify.zip https://github.com/novnc/websockify/archive/refs/tags/v0.11.0.zip && \
-    unzip -q websockify.zip && \
-    mv websockify-0.11.0 websockify && \
-    rm websockify.zip
+    rm novnc.zip
+
+# 用 pip 安装 websockify（避免 shell 语法问题）
+RUN pip3 install websockify
 
 # 创建启动脚本
 RUN cat > /app/start.sh << 'EOF'
 #!/bin/bash
 
-set -e
-
 echo "=========================================="
 echo "     Alpine VNC + Chrome 启动中...       "
 echo "=========================================="
 
-# 清理残留文件
+# 清理残留
 rm -f /tmp/.X0-lock 2>/dev/null
 rm -rf /tmp/.X11-unix 2>/dev/null
 mkdir -p /tmp/.X11-unix
@@ -50,14 +51,21 @@ chmod 1777 /tmp/.X11-unix
 mkdir -p /run/dbus
 dbus-daemon --system --fork 2>/dev/null || true
 
-# 1. 启动 Xvfb
+# 1. 启动 Xvfb（增加更多参数）
 echo "[1/5] 启动虚拟显示器 Xvfb..."
-Xvfb :0 -screen 0 1280x800x24 -ac +extension GLX +render &
+Xvfb :0 -screen 0 1280x800x24 -ac +extension GLX +render -noreset &
 sleep 3
+
+# 检查 Xvfb 是否启动成功
+if ! pgrep Xvfb > /dev/null; then
+    echo "❌ Xvfb 启动失败，尝试备用方式..."
+    Xvfb :0 -screen 0 1024x768x16 &
+    sleep 3
+fi
 
 export DISPLAY=:0
 
-# 2. 启动 fluxbox 窗口管理器
+# 2. 启动 fluxbox
 echo "[2/5] 启动窗口管理器 Fluxbox..."
 fluxbox 2>/dev/null &
 sleep 2
@@ -95,13 +103,8 @@ echo "  访问地址: https://你的域名.onrender.com"
 echo "=========================================="
 echo ""
 
-# 启动 websockify
-cd /app/novnc
-python3 /app/websockify/run \
-    --web /app/novnc \
-    --cert=none \
-    0.0.0.0:${PORT:-8080} \
-    localhost:5900
+# 启动 websockify（使用 pip 安装的版本）
+websockify --web /app/novnc 0.0.0.0:${PORT:-8080} localhost:5900
 EOF
 
 RUN chmod +x /app/start.sh
