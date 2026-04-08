@@ -1,5 +1,6 @@
 FROM alpine:latest
 
+# 安装所有必要软件
 RUN apk update && apk add --no-cache \
     xvfb \
     x11vnc \
@@ -11,9 +12,11 @@ RUN apk update && apk add --no-cache \
     gtk+3.0 \
     dbus \
     dbus-x11 \
-    curl \
+    ttf-dejavu \
     python3 \
-    py3-pip
+    py3-pip \
+    curl \
+    unzip
 
 # 下载 noVNC 和 websockify
 RUN mkdir -p /app && \
@@ -31,61 +34,74 @@ RUN mkdir -p /app && \
 RUN cat > /app/start.sh << 'EOF'
 #!/bin/bash
 
+set -e
+
 echo "=========================================="
-echo "       启动 Alpine VNC + Chrome          "
+echo "     Alpine VNC + Chrome 启动中...       "
 echo "=========================================="
 
-# 清理
+# 清理残留文件
 rm -f /tmp/.X0-lock 2>/dev/null
-mkdir -p /run/dbus
+rm -rf /tmp/.X11-unix 2>/dev/null
+mkdir -p /tmp/.X11-unix
+chmod 1777 /tmp/.X11-unix
 
 # 启动 dbus
-dbus-daemon --system --fork 2>/dev/null
+mkdir -p /run/dbus
+dbus-daemon --system --fork 2>/dev/null || true
 
-# 启动 Xvfb
-echo "[1/5] 启动虚拟显示器..."
-Xvfb :0 -screen 0 1280x800x24 -ac &
+# 1. 启动 Xvfb
+echo "[1/5] 启动虚拟显示器 Xvfb..."
+Xvfb :0 -screen 0 1280x800x24 -ac +extension GLX +render &
 sleep 3
 
 export DISPLAY=:0
 
-# 启动 fluxbox
-echo "[2/5] 启动窗口管理器..."
+# 2. 启动 fluxbox 窗口管理器
+echo "[2/5] 启动窗口管理器 Fluxbox..."
 fluxbox 2>/dev/null &
 sleep 2
 
-# 启动 x11vnc
+# 3. 启动 x11vnc
 echo "[3/5] 启动 VNC 服务..."
 x11vnc -display :0 -forever -nopw -listen 0.0.0.0 -rfbport 5900 2>/dev/null &
 sleep 2
 
-# 启动 Chrome
-echo "[4/5] 启动 Chrome 无痕模式..."
+# 4. 启动 Chromium
+echo "[4/5] 启动 Chromium 无痕模式..."
 DISPLAY=:0 chromium-browser \
     --no-sandbox \
     --disable-dev-shm-usage \
     --disable-gpu \
+    --disable-software-rasterizer \
     --window-size=1280,800 \
     --incognito \
     --no-first-run \
+    --disable-dbus \
     --user-data-dir=/tmp/chrome \
     https://www.google.com 2>/dev/null &
 
 sleep 3
 
+# 5. 启动 noVNC
 echo "[5/5] 启动 noVNC Web 服务..."
 echo ""
 echo "=========================================="
-echo "✅ 服务已启动！"
+echo "           服务已成功启动！               "
 echo "=========================================="
-echo "📌 访问地址: https://你的域名.onrender.com"
-echo "📌 如果连接失败，尝试: https://你的域名.onrender.com/vnc.html?path=websockify"
+echo "  VNC 端口: 5900"
+echo "  Web 端口: ${PORT:-8080}"
+echo "  访问地址: https://你的域名.onrender.com"
 echo "=========================================="
 echo ""
 
-# 启动 websockify（直接监听 8080，不使用 nginx）
+# 启动 websockify
 cd /app/novnc
-python3 /app/websockify/run --web /app/novnc --cert=none 0.0.0.0:8080 localhost:5900
+python3 /app/websockify/run \
+    --web /app/novnc \
+    --cert=none \
+    0.0.0.0:${PORT:-8080} \
+    localhost:5900
 EOF
 
 RUN chmod +x /app/start.sh
