@@ -8,10 +8,10 @@ echo "=========================================="
 rm -rf /tmp/.X0-lock /tmp/.X11-unix 2>/dev/null
 
 # 启动健康检查服务（解决 Render 健康检查问题）
-echo "Starting health check server on port 8080..."
+echo "Starting health check server on port 8081..."
 (
   while true; do
-    echo -e "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n\r\nOK" | nc -l -p 8080 -q 1
+    echo -e "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n\r\nOK" | nc -l -p 8081 -q 1
   done
 ) &
 HEALTH_PID=$!
