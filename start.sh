@@ -16,9 +16,8 @@ echo "Starting Fluxbox..."
 fluxbox -display :0 &
 sleep 3
 
-# 使用 Chromium 替代 Firefox（无沙盒模式）
-echo "Starting Chromium (Private Mode)..."
-chromium-browser --display=:0 --incognito --no-sandbox --disable-dev-shm-usage https://www.google.com &
+echo "Starting Firefox (Private Mode)..."
+firefox --display=:0 --private-window https://www.google.com &
 sleep 5
 
 echo "Starting x11vnc..."
