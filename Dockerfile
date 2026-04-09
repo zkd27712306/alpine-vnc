@@ -8,8 +8,6 @@ RUN apk update && apk add --no-cache \
     chromium \
     nginx \
     bash \
-    curl
-    dbus-x11 \
     curl \
     python3 \
     py3-pip
