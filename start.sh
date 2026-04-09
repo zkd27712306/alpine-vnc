@@ -70,14 +70,21 @@ x11vnc \
   -bg &
 sleep 3
 
-# 启动 noVNC（WebSocket 代理）
+# 启动 noVNC（WebSocket 代理）- 使用循环自动重启
 echo "Starting noVNC WebSocket proxy..."
-websockify \
-  --web /usr/share/novnc \
-  --heartbeat=30 \
-  --timeout=60 \
-  0.0.0.0:8080 \
-  localhost:5900 &
+(
+  while true; do
+    websockify \
+      --web /usr/share/novnc \
+      --heartbeat=30 \
+      --timeout=0 \
+      --idle-timeout=0 \
+      0.0.0.0:8080 \
+      localhost:5900
+    echo "WebSocket proxy exited, restarting in 2 seconds..."
+    sleep 2
+  done
+) &
 
 echo ""
 echo "=========================================="
@@ -89,7 +96,38 @@ echo "  🔗 Access URL: https://你的服务名.onrender.com"
 echo "=========================================="
 echo ""
 
-# 保持容器运行
+# 监控所有关键进程，自动重启失败的进程
 while true; do
-    sleep 300
+    # 检查关键进程
+    if ! pgrep -x "Xvfb" > /dev/null; then
+        echo "Xvfb died, restarting..."
+        Xvfb :0 -screen 0 ${RESOLUTION}x24 -ac &
+        export DISPLAY=:0
+        sleep 3
+    fi
+    
+    if ! pgrep -x "fluxbox" > /dev/null; then
+        echo "Fluxbox died, restarting..."
+        fluxbox -display :0 &
+        sleep 2
+    fi
+    
+    if ! pgrep -f "x11vnc" > /dev/null; then
+        echo "x11vnc died, restarting..."
+        x11vnc -display :0 -forever -passwd ${PASSWORD} -shared -rfbport 5900 -noxdamage -nowf -noscr -xkb -repeat -nevershared -bg &
+        sleep 2
+    fi
+    
+    # 健康检查服务器保持运行
+    if ! kill -0 $HEALTH_PID 2>/dev/null; then
+        echo "Health check server died, restarting..."
+        (
+          while true; do
+            echo -e "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n\r\nOK" | nc -l -p 8081 -q 1
+          done
+        ) &
+        HEALTH_PID=$!
+    fi
+    
+    sleep 30
 done
