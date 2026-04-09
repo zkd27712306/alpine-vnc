@@ -9,7 +9,6 @@ RUN apk update && apk add --no-cache \
     nginx \
     bash \
     curl
-    cups-libs \
     gtk+3.0 \
     dbus \
     dbus-x11 \
