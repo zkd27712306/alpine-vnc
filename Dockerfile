@@ -9,7 +9,6 @@ RUN apk update && apk add --no-cache \
     nginx \
     bash \
     curl
-    dbus \
     dbus-x11 \
     curl \
     python3 \
