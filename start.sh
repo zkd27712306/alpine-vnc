@@ -1,9 +1,5 @@
 #!/bin/bash
 
-echo "=========================================="
-echo "  Starting Alpine VNC Desktop on Render"
-echo "=========================================="
-
 # 清理锁文件
 rm -rf /tmp/.X0-lock /tmp/.X11-unix 2>/dev/null
 
