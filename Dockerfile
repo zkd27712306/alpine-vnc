@@ -9,7 +9,6 @@ RUN apk update && apk add --no-cache \
     nginx \
     bash \
     curl
-    chromium \
     nss \
     cups-libs \
     gtk+3.0 \
